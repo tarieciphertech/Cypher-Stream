@@ -25,8 +25,9 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { featuredTitle, genreMoods, titles, type Title } from './data';
+import AdminStudio from '@/pages/admin-studio';
 import NotFound from '@/pages/not-found';
-import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
+import { Link, Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 
 const queryClient = new QueryClient();
 type NavKey = 'home' | 'series' | 'films' | 'my-list';
@@ -362,6 +363,7 @@ function BrowseSurface() {
         </div>
         <div className="mt-auto">
           <div className="mb-6 border-t border-white/[.08] pt-5">
+             <Link href="/admin" data-testid="link-open-admin" className="focus-ring mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[12px] text-[#e8bc71] hover:bg-[#e8bc71]/[.06]"><Clapperboard size={16} /> Content studio <ArrowUpRight size={13} className="ml-auto" /></Link>
             <button type="button" onClick={() => alert('Cypher settings are coming soon.')} data-testid="button-settings" className="focus-ring flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[12px] text-[#92929d] hover:bg-white/[.04] hover:text-[#eeebda]"><SlidersHorizontal size={16} /> Preferences</button>
             <button type="button" onClick={() => alert('Help center is coming soon.')} data-testid="button-help" className="focus-ring mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[12px] text-[#92929d] hover:bg-white/[.04] hover:text-[#eeebda]"><CircleHelp size={16} /> Help center</button>
           </div>
@@ -393,6 +395,7 @@ function BrowseSurface() {
             <nav className="grid grid-cols-4 gap-1">
               {navItems.map((item) => <NavButton key={item.key} item={item} active={activeSection === item.key} onSelect={() => selectNav(item.key)} count={savedIds.length} mobile />)}
             </nav>
+             <Link href="/admin" onClick={() => setMobileNavOpen(false)} data-testid="link-mobile-admin" className="mt-3 flex items-center justify-center gap-2 border-t border-white/10 pt-3 text-[10px] font-semibold uppercase tracking-[.14em] text-[#e8bc71]"><Clapperboard size={14} /> Open content studio <ArrowUpRight size={13} /></Link>
           </div>
         )}
 
@@ -469,6 +472,7 @@ function Router() {
   return (
     <RoutedErrorBoundary>
       <Switch>
+        <Route path="/admin" component={AdminStudio} />
         <Route path="/" component={BrowseSurface} />
         <Route component={NotFound} />
       </Switch>
