@@ -1,5 +1,12 @@
 export type MediaType = 'film' | 'series';
 
+export interface Episode {
+  id: string;
+  label: string;
+  source: string;
+  duration?: string;
+}
+
 export interface Title {
   id: string;
   name: string;
@@ -13,12 +20,26 @@ export interface Title {
   poster: string;
   backdrop: string;
   accent: string;
+  playbackSource?: string;
+  episodes?: Episode[];
   progress?: number;
   badge?: string;
 }
 
 const tmdb = (path: string, size: 'w500' | 'w780' | 'original' = 'w500') =>
   `https://image.tmdb.org/t/p/${size}${path}`;
+
+export const prototypeVideoSources = [
+  'https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+  'https://storage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+  'https://storage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
+];
+
+const prototypeEpisodes = (id: string): Episode[] => [
+  { id: `${id}-episode-1`, label: 'Episode 01 / The opening signal', source: prototypeVideoSources[0] },
+  { id: `${id}-episode-2`, label: 'Episode 02 / A room with no doors', source: prototypeVideoSources[1] },
+  { id: `${id}-episode-3`, label: 'Episode 03 / The shape of a secret', source: prototypeVideoSources[2] },
+];
 
 export const featuredTitle: Title = {
   id: 'the-quiet-girl',
@@ -34,10 +55,11 @@ export const featuredTitle: Title = {
   poster: tmdb('/p6G24P1x5jXvK6jJbM7B0kVQ2x4.jpg'),
   backdrop: tmdb('/5Yg3c0cV4bXJQ0h5jTz0Kj2v2zQ.jpg', 'original'),
   accent: '#c4e56b',
+  playbackSource: prototypeVideoSources[0],
   badge: 'Quietly acclaimed',
 };
 
-export const titles: Title[] = [
+export const titles: Title[] = ([
   featuredTitle,
   {
     id: 'after-yang',
@@ -183,7 +205,11 @@ export const titles: Title[] = [
     backdrop: tmdb('/1k4m7p0s3v6x9z2c5b8n1q4w7e.jpg', 'w780'),
     accent: '#9ebc9a',
   },
-];
+  ] as Title[]).map((title, index) => ({
+  ...title,
+  playbackSource: title.playbackSource || prototypeVideoSources[index % prototypeVideoSources.length],
+  episodes: title.type === 'series' ? title.episodes || prototypeEpisodes(title.id) : title.episodes,
+}));
 
 export const genreMoods = [
   { name: 'Slow burn', count: 18, color: '#485a67', image: tmdb('/qDWA7f1vL3J2xN9mK5cR8sB0h6A.jpg', 'w500') },

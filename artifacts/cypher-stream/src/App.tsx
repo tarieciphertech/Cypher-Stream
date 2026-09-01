@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   ArrowUpRight,
@@ -26,6 +26,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { featuredTitle, genreMoods, titles, type Title } from './data';
 import AdminStudio from '@/pages/admin-studio';
+import WatchPage from '@/pages/watch';
 import NotFound from '@/pages/not-found';
 import { Link, Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 
@@ -41,6 +42,7 @@ const navItems: { key: NavKey; label: string; icon: typeof Home }[] = [
 
 const posterFallback = (title: string, accent: string) =>
   `linear-gradient(145deg, ${accent} 0%, #171822 65%, #0b0c14 100%)`;
+const savedListKey = 'cypher-saved-titles';
 
 function BrandMark() {
   return (
@@ -119,11 +121,13 @@ function PosterCard({
   title,
   isSaved,
   onOpen,
+  onPlay,
   onToggleSaved,
 }: {
   title: Title;
   isSaved: boolean;
   onOpen: () => void;
+  onPlay: () => void;
   onToggleSaved: () => void;
 }) {
   return (
@@ -143,7 +147,7 @@ function PosterCard({
           <button
             type="button"
             aria-label={`Play ${title.name}`}
-            onClick={onOpen}
+            onClick={onPlay}
             data-testid={`button-play-${title.id}`}
             className="focus-ring grid h-8 w-8 place-items-center rounded-full bg-[#eeebda] text-[#101118] transition-transform hover:scale-105"
           >
@@ -182,6 +186,7 @@ function TitleRow({
   items,
   saved,
   onOpen,
+  onPlay,
   onToggleSaved,
 }: {
   label: string;
@@ -189,6 +194,7 @@ function TitleRow({
   items: Title[];
   saved: Set<string>;
   onOpen: (title: Title) => void;
+  onPlay: (title: Title) => void;
   onToggleSaved: (id: string) => void;
 }) {
   const [offset, setOffset] = useState(0);
@@ -210,7 +216,7 @@ function TitleRow({
       </div>
       <div className="scrollbar-none flex gap-3 overflow-x-auto pb-3 sm:gap-4">
         {visible.map((title) => (
-          <PosterCard key={title.id} title={title} isSaved={saved.has(title.id)} onOpen={() => onOpen(title)} onToggleSaved={() => onToggleSaved(title.id)} />
+          <PosterCard key={title.id} title={title} isSaved={saved.has(title.id)} onOpen={() => onOpen(title)} onPlay={() => onPlay(title)} onToggleSaved={() => onToggleSaved(title.id)} />
         ))}
       </div>
     </section>
@@ -284,7 +290,7 @@ function MyListEmpty({ onBrowse }: { onBrowse: () => void }) {
   );
 }
 
-function DetailPanel({ title, isSaved, onClose, onToggleSaved }: { title: Title; isSaved: boolean; onClose: () => void; onToggleSaved: () => void }) {
+function DetailPanel({ title, isSaved, onClose, onPlay, onToggleSaved }: { title: Title; isSaved: boolean; onClose: () => void; onPlay: () => void; onToggleSaved: () => void }) {
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-[#05060b]/80 p-0 backdrop-blur-sm sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-label={`${title.name} details`} data-testid="detail-overlay">
       <button type="button" aria-label="Close details" onClick={onClose} data-testid="button-close-details" className="absolute inset-0 cursor-default" />
@@ -306,7 +312,7 @@ function DetailPanel({ title, isSaved, onClose, onToggleSaved }: { title: Title;
             </div>
             <p className="mt-5 max-w-xl text-sm leading-7 text-[#b8b6be]">{title.description}</p>
             <div className="mt-7 flex flex-wrap gap-3">
-              <button type="button" onClick={() => alert(`Opening ${title.name}`)} data-testid="button-detail-play" className="focus-ring flex items-center gap-2 rounded-full bg-[#eeebda] px-5 py-3 text-[11px] font-bold text-[#14151d] hover:bg-[#fffced]"><Play size={14} fill="currentColor" /> Play now</button>
+              <button type="button" onClick={onPlay} data-testid="button-detail-play" className="focus-ring flex items-center gap-2 rounded-full bg-[#eeebda] px-5 py-3 text-[11px] font-bold text-[#14151d] hover:bg-[#fffced]"><Play size={14} fill="currentColor" /> Play now</button>
               <button type="button" onClick={onToggleSaved} data-testid="button-detail-save" className="focus-ring flex items-center gap-2 rounded-full border border-white/15 px-5 py-3 text-[11px] font-semibold text-[#eeebda] hover:border-[#e8bc71] hover:text-[#e8bc71]">{isSaved ? <Check size={14} /> : <Plus size={14} />} {isSaved ? 'In My List' : 'My List'}</button>
             </div>
           </div>
@@ -324,10 +330,22 @@ function DetailPanel({ title, isSaved, onClose, onToggleSaved }: { title: Title;
 function BrowseSurface() {
   const [activeSection, setActiveSection] = useState<NavKey>('home');
   const [query, setQuery] = useState('');
-  const [savedIds, setSavedIds] = useState<string[]>([]);
+  const [savedIds, setSavedIds] = useState<string[]>(() => {
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(savedListKey) || '[]');
+      return Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : [];
+    } catch {
+      return [];
+    }
+  });
   const [selectedTitle, setSelectedTitle] = useState<Title | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [, setLocation] = useLocation();
   const saved = useMemo(() => new Set(savedIds), [savedIds]);
+
+  useEffect(() => {
+    window.localStorage.setItem(savedListKey, JSON.stringify(savedIds));
+  }, [savedIds]);
 
   const filteredTitles = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -340,6 +358,7 @@ function BrowseSurface() {
   }, [activeSection, query, saved]);
 
   const toggleSaved = (id: string) => setSavedIds((current) => current.includes(id) ? current.filter((savedId) => savedId !== id) : [...current, id]);
+  const openWatch = (title: Title) => setLocation(`/watch/${title.id}`);
   const selectNav = (key: NavKey) => {
     setActiveSection(key);
     setQuery('');
@@ -417,7 +436,7 @@ function BrowseSurface() {
                   <div className="reveal reveal-delay-2 mt-6 flex flex-wrap items-center gap-3 text-[11px] text-[#c0bec4]"><span className="text-[#c4e56b]">{featuredTitle.rating}</span><span className="text-white/20">/</span><span>{featuredTitle.year}</span><span className="text-white/20">/</span><span>{featuredTitle.duration}</span>{featuredTitle.genres.map((genre) => <span key={genre}>{genre}</span>)}</div>
                   <p className="reveal reveal-delay-3 mt-5 max-w-md text-[13px] leading-6 text-[#b9b7be] sm:text-sm">{featuredTitle.description}</p>
                   <div className="reveal reveal-delay-3 mt-7 flex flex-wrap gap-3">
-                    <button type="button" onClick={() => alert(`Opening ${featuredTitle.name}`)} data-testid="button-featured-play" className="focus-ring flex items-center gap-2 rounded-full bg-[#eeebda] px-6 py-3 text-[11px] font-bold text-[#14151d] transition-transform hover:scale-[1.03]"><Play size={14} fill="currentColor" /> Play now</button>
+                    <button type="button" onClick={() => openWatch(featuredTitle)} data-testid="button-featured-play" className="focus-ring flex items-center gap-2 rounded-full bg-[#eeebda] px-6 py-3 text-[11px] font-bold text-[#14151d] transition-transform hover:scale-[1.03]"><Play size={14} fill="currentColor" /> Play now</button>
                     <button type="button" onClick={() => setSelectedTitle(featuredTitle)} data-testid="button-featured-details" className="focus-ring flex items-center gap-2 rounded-full border border-white/20 bg-[#0b0c14]/35 px-6 py-3 text-[11px] font-semibold text-[#eeebda] backdrop-blur-sm hover:border-[#e8bc71] hover:text-[#e8bc71]"><Info size={14} /> Details</button>
                   </div>
                 </div>
@@ -432,21 +451,21 @@ function BrowseSurface() {
           {searchActive ? (
             <section className="pt-10" data-testid="section-search-results">
               <div className="mb-8 flex items-end justify-between"><div><p className="mono mb-2 text-[9px] uppercase tracking-[.25em] text-[#e8bc71]">Search results</p><h1 className="display text-3xl font-bold tracking-[-.05em] text-[#eeebda]">For “{query}”</h1></div><span className="mono text-[10px] text-[#72717d]">{filteredTitles.length} matches</span></div>
-              {filteredTitles.length ? <div className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-4 sm:gap-x-4 lg:grid-cols-6">{filteredTitles.map((title) => <PosterCard key={title.id} title={title} isSaved={saved.has(title.id)} onOpen={() => setSelectedTitle(title)} onToggleSaved={() => toggleSaved(title.id)} />)}</div> : <SearchEmpty query={query} onReset={() => setQuery('')} onBrowse={() => selectNav('home')} />}
+              {filteredTitles.length ? <div className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-4 sm:gap-x-4 lg:grid-cols-6">{filteredTitles.map((title) => <PosterCard key={title.id} title={title} isSaved={saved.has(title.id)} onOpen={() => setSelectedTitle(title)} onPlay={() => openWatch(title)} onToggleSaved={() => toggleSaved(title.id)} />)}</div> : <SearchEmpty query={query} onReset={() => setQuery('')} onBrowse={() => selectNav('home')} />}
             </section>
           ) : activeSection === 'my-list' ? (
             <section className="pt-10" data-testid="section-my-list">
               <div className="mb-2"><p className="mono mb-2 text-[9px] uppercase tracking-[.25em] text-[#c4e56b]">Saved for later</p><h1 className="display text-4xl font-bold tracking-[-.06em] text-[#eeebda]">My List</h1></div>
               <p className="mb-8 text-sm text-[#85848f]">{savedIds.length ? `${savedIds.length} title${savedIds.length === 1 ? '' : 's'} in your private index.` : 'A quiet place for your next great watch.'}</p>
-              {filteredTitles.length ? <div className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-4 sm:gap-x-4 lg:grid-cols-6">{filteredTitles.map((title) => <PosterCard key={title.id} title={title} isSaved={saved.has(title.id)} onOpen={() => setSelectedTitle(title)} onToggleSaved={() => toggleSaved(title.id)} />)}</div> : <MyListEmpty onBrowse={() => selectNav('home')} />}
+              {filteredTitles.length ? <div className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-4 sm:gap-x-4 lg:grid-cols-6">{filteredTitles.map((title) => <PosterCard key={title.id} title={title} isSaved={saved.has(title.id)} onOpen={() => setSelectedTitle(title)} onPlay={() => openWatch(title)} onToggleSaved={() => toggleSaved(title.id)} />)}</div> : <MyListEmpty onBrowse={() => selectNav('home')} />}
             </section>
           ) : (
             <>
               {!showHomeHero && <div className="reveal flex items-end justify-between pt-11"><div><p className="mono mb-2 text-[9px] uppercase tracking-[.25em] text-[#e8bc71]">The index</p><h1 className="display text-4xl font-bold tracking-[-.06em] text-[#eeebda]">{activeSection === 'series' ? 'Series, in full signal.' : 'Films worth staying up for.'}</h1></div><span className="mono hidden text-[10px] text-[#72717d] sm:block">{filteredTitles.length} transmissions</span></div>}
-              {showHomeHero && <TitleRow label="Pick up where you left off" kicker="Continue watching" items={continueTitles} saved={saved} onOpen={setSelectedTitle} onToggleSaved={toggleSaved} />}
-              <TitleRow label={activeSection === 'home' ? 'Tonight’s signal' : activeSection === 'series' ? 'Series with a point of view' : 'The long way around'} kicker={activeSection === 'home' ? 'Curated this week' : undefined} items={filteredTitles.filter((title) => !continueTitles.includes(title)).slice(0, 6)} saved={saved} onOpen={setSelectedTitle} onToggleSaved={toggleSaved} />
+               {showHomeHero && <TitleRow label="Pick up where you left off" kicker="Continue watching" items={continueTitles} saved={saved} onOpen={setSelectedTitle} onPlay={openWatch} onToggleSaved={toggleSaved} />}
+               <TitleRow label={activeSection === 'home' ? 'Tonight’s signal' : activeSection === 'series' ? 'Series with a point of view' : 'The long way around'} kicker={activeSection === 'home' ? 'Curated this week' : undefined} items={filteredTitles.filter((title) => !continueTitles.includes(title)).slice(0, 6)} saved={saved} onOpen={setSelectedTitle} onPlay={openWatch} onToggleSaved={toggleSaved} />
               {showHomeHero && <GenreGrid onGenre={(genre) => setQuery(genre)} />}
-              <TitleRow label="Further transmissions" kicker="A little off-center" items={newTitles.filter((title) => filteredTitles.includes(title))} saved={saved} onOpen={setSelectedTitle} onToggleSaved={toggleSaved} />
+               <TitleRow label="Further transmissions" kicker="A little off-center" items={newTitles.filter((title) => filteredTitles.includes(title))} saved={saved} onOpen={setSelectedTitle} onPlay={openWatch} onToggleSaved={toggleSaved} />
               {showHomeHero && <div className="reveal mt-16 border-y border-white/[.08] py-8 sm:flex sm:items-center sm:justify-between" data-testid="section-membership-note"><div><p className="mono mb-2 text-[9px] uppercase tracking-[.25em] text-[#e8bc71]">The Cypher promise</p><p className="display text-xl font-bold tracking-[-.03em] text-[#eeebda]">Less noise. More afterglow.</p></div><p className="mt-3 max-w-sm text-xs leading-5 text-[#85848f] sm:mt-0">A human-shaped catalogue of films and series for the beautifully curious. We add a small batch every Thursday.</p><button type="button" onClick={() => alert('You are already on the list.')} data-testid="button-join-cypher" className="focus-ring mt-5 flex shrink-0 items-center gap-2 text-[11px] font-bold text-[#c4e56b] sm:mt-0">Stay in the loop <ArrowUpRight size={14} /></button></div>}
             </>
           )}
@@ -463,7 +482,7 @@ function BrowseSurface() {
       <nav className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-around rounded-2xl border border-white/10 bg-[#151620]/90 py-2 backdrop-blur-xl lg:hidden" data-testid="nav-mobile-bottom">
         {navItems.map((item) => <NavButton key={item.key} item={item} active={activeSection === item.key} onSelect={() => selectNav(item.key)} count={savedIds.length} mobile />)}
       </nav>
-      {selectedTitle && <DetailPanel title={selectedTitle} isSaved={saved.has(selectedTitle.id)} onClose={() => setSelectedTitle(null)} onToggleSaved={() => toggleSaved(selectedTitle.id)} />}
+      {selectedTitle && <DetailPanel title={selectedTitle} isSaved={saved.has(selectedTitle.id)} onClose={() => setSelectedTitle(null)} onPlay={() => openWatch(selectedTitle)} onToggleSaved={() => toggleSaved(selectedTitle.id)} />}
     </div>
   );
 }
@@ -473,6 +492,7 @@ function Router() {
     <RoutedErrorBoundary>
       <Switch>
         <Route path="/admin" component={AdminStudio} />
+        <Route path="/watch/:id" component={WatchPage} />
         <Route path="/" component={BrowseSurface} />
         <Route component={NotFound} />
       </Switch>
