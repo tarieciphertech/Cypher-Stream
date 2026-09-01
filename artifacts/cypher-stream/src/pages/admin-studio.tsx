@@ -69,6 +69,54 @@ const formatSize = (bytes: number) => {
 const formatDateLabel = () =>
   new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date());
 
+const createVideoThumbnail = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    const sourceUrl = URL.createObjectURL(file);
+    let settled = false;
+
+    const cleanup = () => {
+      URL.revokeObjectURL(sourceUrl);
+      video.removeAttribute('src');
+      video.load();
+    };
+
+    const fail = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error('Unable to generate a thumbnail from this video.'));
+    };
+
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    video.onloadedmetadata = () => {
+      video.currentTime = Math.min(1, Math.max(0, video.duration / 2));
+    };
+    video.onseeked = () => {
+      if (settled) return;
+      const canvas = document.createElement('canvas');
+      const width = video.videoWidth || 640;
+      const height = video.videoHeight || 360;
+      const scale = Math.min(1, 960 / width);
+      canvas.width = Math.max(1, Math.round(width * scale));
+      canvas.height = Math.max(1, Math.round(height * scale));
+      const context = canvas.getContext('2d');
+      if (!context) {
+        fail();
+        return;
+      }
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      settled = true;
+      const thumbnail = canvas.toDataURL('image/jpeg', 0.82);
+      cleanup();
+      resolve(thumbnail);
+    };
+    video.onerror = fail;
+    video.src = sourceUrl;
+  });
+
 function FileStagingCard({
   kind,
   file,
@@ -87,7 +135,7 @@ function FileStagingCard({
   return (
     <div className="studio-upload-card" data-testid={`card-upload-${kind}`}>
       <input key={file?.name || 'empty'} id={inputId} type="file" accept={accept} onChange={onChange} className="sr-only" data-testid={`input-file-${kind}`} />
-      {file?.previewUrl && !isVideo ? (
+      {file?.previewUrl ? (
         <div className="studio-poster-preview" style={{ backgroundImage: `url(${file.previewUrl})` }} aria-label={`${file.name} preview`} />
       ) : (
         <div className={`studio-upload-icon ${isVideo ? 'studio-upload-icon-video' : ''}`}>
@@ -103,7 +151,7 @@ function FileStagingCard({
             <div className="studio-progress" aria-label={`${kind} locally staged`}>
               <span style={{ width: '100%' }} />
             </div>
-            <p className="studio-ready"><Check size={11} /> Ready for local staging</p>
+            <p className="studio-ready"><Check size={11} /> {isVideo && file.previewUrl ? 'Thumbnail generated' : 'Ready for local staging'}</p>
           </>
         ) : (
           <p className="studio-upload-copy">Choose a {isVideo ? 'video file' : 'poster image'} to stage a local preview.</p>
@@ -217,7 +265,7 @@ export default function AdminStudio() {
 
   const updateForm = (key: keyof FormState, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
-  const stageFile = (event: ChangeEvent<HTMLInputElement>, kind: 'video' | 'poster') => {
+  const stageFile = async (event: ChangeEvent<HTMLInputElement>, kind: 'video' | 'poster') => {
     const selected = event.target.files?.[0];
     if (!selected) return;
     const staged: StagedFile = {
@@ -226,9 +274,20 @@ export default function AdminStudio() {
       size: selected.size,
       previewUrl: kind === 'poster' ? URL.createObjectURL(selected) : undefined,
     };
-    if (kind === 'video') setVideoFile(staged);
-    else setPosterFile(staged);
-    setNotice(`${kind === 'video' ? 'Video' : 'Poster'} staged in this browser.`);
+    if (kind === 'video') {
+      setVideoFile(staged);
+      setNotice('Video staged. Generating a thumbnail from the opening frame...');
+      try {
+        const previewUrl = await createVideoThumbnail(selected);
+        setVideoFile((current) => current?.name === selected.name ? { ...current, previewUrl } : current);
+        setNotice('Video staged and thumbnail generated automatically.');
+      } catch {
+        setNotice('Video staged, but a thumbnail could not be generated from this file.');
+      }
+    } else {
+      setPosterFile(staged);
+      setNotice('Poster staged in this browser.');
+    }
   };
 
   const resetForm = () => {
@@ -246,7 +305,7 @@ export default function AdminStudio() {
     }
     const genres = form.genres.split(',').map((genre) => genre.trim()).filter(Boolean);
     const id = `${form.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'untitled'}-${Date.now()}`;
-    const posterUrl = posterFile?.previewUrl || '';
+    const posterUrl = posterFile?.previewUrl || videoFile?.previewUrl || '';
     const entry: CatalogEntry = {
       id,
       name: form.name.trim(),
