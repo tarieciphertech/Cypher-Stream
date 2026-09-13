@@ -4,10 +4,12 @@ import * as schema from "./schema";
 
 const { Pool } = pg;
 
-let pool: InstanceType<typeof Pool> | null = null;
-let database: ReturnType<typeof drizzle<typeof schema>> | null = null;
+type Database = ReturnType<typeof drizzle>;
 
-export function getDb() {
+let pool: InstanceType<typeof Pool> | null = null;
+let database: Database | null = null;
+
+export function getDb(): Database {
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL must be set to use database-backed routes");
   }
