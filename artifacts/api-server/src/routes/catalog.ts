@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, asc, count, desc, eq, ilike, or } from "drizzle-orm";
+import { and, asc, countDistinct, desc, eq, ilike, or } from "drizzle-orm";
 import { CatalogResponse, CatalogTitleDetail } from "@workspace/api-zod";
 import { getDb, episodes, genres, seasons, titleGenres, titles } from "@workspace/db";
 
@@ -30,38 +30,30 @@ router.get("/catalog", async (req, res) => {
       );
     }
 
+    const whereClause = genre
+      ? and(...filters, eq(genres.slug, genre))
+      : and(...filters);
+
     const rows = await db
-      .select({
-        title: titles,
-        genre: genres,
-      })
+      .select({ title: titles, genre: genres })
       .from(titles)
       .leftJoin(titleGenres, eq(titleGenres.titleId, titles.id))
       .leftJoin(genres, eq(genres.id, titleGenres.genreId))
-      .where(
-        genre
-          ? and(...filters, eq(genres.slug, genre))
-          : and(...filters),
-      )
+      .where(whereClause)
       .orderBy(desc(titles.featured), desc(titles.updatedAt), asc(titles.name))
       .limit(limit)
       .offset(offset);
 
     const totalRows = await db
-      .select({ count: count(titles.id) })
+      .select({ count: countDistinct(titles.id) })
       .from(titles)
       .leftJoin(titleGenres, eq(titleGenres.titleId, titles.id))
       .leftJoin(genres, eq(genres.id, titleGenres.genreId))
-      .where(
-        genre
-          ? and(...filters, eq(genres.slug, genre))
-          : and(...filters),
-      );
+      .where(whereClause);
 
     const grouped = new Map<string, CatalogResponse["items"][number]>();
     for (const row of rows) {
-      const existing = grouped.get(row.title.id);
-      const mapped = {
+      const mapped = grouped.get(row.title.id) ?? {
         id: row.title.id,
         slug: row.title.slug,
         name: row.title.name,
@@ -77,7 +69,7 @@ router.get("/catalog", async (req, res) => {
         accent: row.title.accent,
         featured: row.title.featured,
         badge: row.title.badge,
-        genres: existing?.genres ?? [],
+        genres: [],
       };
       if (row.genre && !mapped.genres.some((item) => item.id === row.genre!.id)) {
         mapped.genres.push({ id: row.genre.id, slug: row.genre.slug, name: row.genre.name });
