@@ -21,9 +21,10 @@ COPY lib/db/package.json lib/db/package.json
 COPY lib/db/src lib/db/src
 COPY lib/db/drizzle.config.ts lib/db/drizzle.config.ts
 
-# The existing workspace contains frontend-oriented platform overrides from Replit.
-# The API build only needs the API workspace and its runtime dependencies.
-RUN pnpm install --no-frozen-lockfile --filter @workspace/api-server... \
+# The workspace contains Replit-oriented platform overrides. The API build
+# runs on ARM64, so restore esbuild's ARM64 optional package inside the image.
+RUN sed -i '/esbuild>@esbuild\/linux-arm64/d' pnpm-workspace.yaml \
+    && pnpm install --no-frozen-lockfile --filter @workspace/api-server... \
     && pnpm --filter @workspace/api-server run build
 
 FROM node:22-bookworm-slim AS runtime
